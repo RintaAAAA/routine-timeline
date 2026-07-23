@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ルーティン タイムライン</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <h1>ルーティン タイムライン</h1>
+    <button id="openAddRoutine" class="btn-icon" aria-label="ルーティンを追加">+</button>
+  </header>
+
+  <section class="quick-log" aria-label="今日の記録">
+    <div id="quickLogGrid" class="quick-log-grid"></div>
+    <p id="emptyRoutineHint" class="hint" hidden>右上の「+」からルーティンを登録してください</p>
+  </section>
+
+  <section class="today-summary" id="todaySummary" hidden></section>
+
+  <section class="timeline-section">
+    <div class="timeline-header">
+      <h2>タイムライン</h2>
+      <button id="manageRoutinesBtn" class="btn-text">ルーティン管理</button>
+    </div>
+    <div id="timeline" class="timeline"></div>
+    <p id="emptyTimelineHint" class="hint" hidden>まだ記録がありません。上のボタンをタップして記録しましょう。</p>
+  </section>
+
+  <dialog id="addRoutineDialog">
+    <form id="addRoutineForm" method="dialog">
+      <h2>ルーティンを追加</h2>
+      <label>名前
+        <input type="text" id="routineName" required maxlength="40" placeholder="例: 降圧剤、腹筋、英単語暗記">
+      </label>
+      <label>カテゴリ
+        <select id="routineCategory">
+          <option value="medication">服薬</option>
+          <option value="workout">運動</option>
+          <option value="study">勉強</option>
+          <option value="other">その他</option>
+        </select>
+      </label>
+      <label>アイコン（絵文字・任意）
+        <input type="text" id="routineIcon" maxlength="2" placeholder="💊">
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="cancelAddRoutine" class="btn-text">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="logDetailDialog">
+    <form id="logDetailForm" method="dialog">
+      <h2 id="logDetailTitle">記録の詳細</h2>
+      <label>日時
+        <input type="datetime-local" id="logTimestamp" required>
+      </label>
+      <label>メモ（任意）
+        <textarea id="logNote" maxlength="200" rows="2" placeholder="回数、時間、感想など"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="cancelLogDetail" class="btn-text">キャンセル</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="manageRoutinesDialog">
+    <h2>ルーティン管理</h2>
+    <div id="manageRoutinesList" class="manage-list"></div>
+    <div class="dialog-actions">
+      <button type="button" id="closeManageRoutines" class="btn-primary">閉じる</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" hidden>
+    <span id="toastMessage"></span>
+    <button id="toastUndo" class="btn-text" hidden>元に戻す</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
