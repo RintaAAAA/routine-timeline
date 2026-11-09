@@ -10,12 +10,18 @@
     other: { label: "その他", colorVar: "--series-4", defaultIcon: "⭐" },
   };
 
+  var STRIP_DAYS = 14; // 統計の記録ストリップに表示する日数
+  var RATE_DAYS = 30; // 達成率の集計上限日数
+
   var state = loadState();
 
   var els = {
     quickLogGrid: document.getElementById("quickLogGrid"),
     emptyRoutineHint: document.getElementById("emptyRoutineHint"),
     todaySummary: document.getElementById("todaySummary"),
+    statsSection: document.getElementById("statsSection"),
+    statTiles: document.getElementById("statTiles"),
+    statRoutines: document.getElementById("statRoutines"),
     timeline: document.getElementById("timeline"),
     emptyTimelineHint: document.getElementById("emptyTimelineHint"),
 
@@ -113,6 +119,7 @@
   function renderAll() {
     renderQuickLogGrid();
     renderTodaySummary();
+    renderStats();
     renderTimeline();
   }
 
@@ -144,6 +151,11 @@
       var category = document.createElement("span");
       category.className = "category";
       category.textContent = meta.label;
+
+      var streak = currentStreak(logDateSet(routine.id));
+      if (streak > 0) {
+        category.textContent = meta.label + " ・ 🔥" + streak + "日";
+      }
 
       info.appendChild(name);
       info.appendChild(document.createElement("br"));
@@ -186,6 +198,180 @@
     els.todaySummary.hidden = false;
     els.todaySummary.textContent =
       "今日: " + doneIds.size + " / " + state.routines.length + " 種類のルーティンを記録済み";
+  }
+
+  // ---------- stats ----------
+
+  // routineId を省略すると全ルーティン合算（どれか1つでも記録した日）
+  function logDateSet(routineId) {
+    var set = {};
+    state.logs.forEach(function (log) {
+      if (routineId && log.routineId !== routineId) return;
+      set[toDateStr(new Date(log.timestamp))] = true;
+    });
+    return set;
+  }
+
+  function addDays(date, n) {
+    var d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+
+  function parseDateStr(str) {
+    var p = str.split("-").map(Number);
+    return new Date(p[0], p[1] - 1, p[2]);
+  }
+
+  // 今日まだ記録していなくても、昨日まで続いていれば連続は途切れていない扱い
+  function currentStreak(set) {
+    var d = addDays(new Date(), 0);
+    if (!set[toDateStr(d)]) d = addDays(d, -1);
+    var n = 0;
+    while (set[toDateStr(d)]) {
+      n++;
+      d = addDays(d, -1);
+    }
+    return n;
+  }
+
+  function bestStreak(set) {
+    var keys = Object.keys(set).sort();
+    var best = 0;
+    var run = 0;
+    var prev = null;
+    keys.forEach(function (k) {
+      if (prev && toDateStr(addDays(prev, 1)) === k) run++;
+      else run = 1;
+      if (run > best) best = run;
+      prev = parseDateStr(k);
+    });
+    return best;
+  }
+
+  // 記録開始日から今日まで（最大30日）のうち、記録した日の割合。記録が無ければ null
+  function achievementRate(set) {
+    var keys = Object.keys(set).sort();
+    if (keys.length === 0) return null;
+    var today = addDays(new Date(), 0);
+    var span = Math.round((today - parseDateStr(keys[0])) / 86400000) + 1;
+    var days = Math.min(RATE_DAYS, Math.max(span, 1));
+    var done = 0;
+    for (var i = 0; i < days; i++) {
+      if (set[toDateStr(addDays(today, -i))]) done++;
+    }
+    return Math.round((done / days) * 100);
+  }
+
+  function renderStats() {
+    els.statTiles.innerHTML = "";
+    els.statRoutines.innerHTML = "";
+
+    if (state.routines.length === 0 || state.logs.length === 0) {
+      els.statsSection.hidden = true;
+      return;
+    }
+    els.statsSection.hidden = false;
+
+    var allSet = logDateSet();
+    var today = addDays(new Date(), 0);
+    var last7 = 0;
+    state.logs.forEach(function (log) {
+      var diff = Math.round((today - addDays(new Date(log.timestamp), 0)) / 86400000);
+      if (diff >= 0 && diff < 7) last7++;
+    });
+
+    addTile("連続記録", currentStreak(allSet) + "日", "最長 " + bestStreak(allSet) + "日");
+    addTile("直近7日", last7 + "回", "記録数");
+    addTile("累計", state.logs.length + "回", Object.keys(allSet).length + "日分");
+
+    state.routines.forEach(function (routine) {
+      var meta = CATEGORY_META[routine.category] || CATEGORY_META.other;
+      var set = logDateSet(routine.id);
+      var total = state.logs.filter(function (l) {
+        return l.routineId === routine.id;
+      }).length;
+      var rate = achievementRate(set);
+
+      var row = document.createElement("div");
+      row.className = "stat-row";
+      row.style.setProperty("--row-color", "var(" + meta.colorVar + ")");
+
+      var head = document.createElement("div");
+      head.className = "stat-row-head";
+
+      var name = document.createElement("span");
+      name.className = "stat-name";
+      name.textContent = (routine.icon || meta.defaultIcon) + " " + routine.name;
+
+      var streak = document.createElement("span");
+      streak.className = "stat-streak";
+      var cur = currentStreak(set);
+      streak.textContent = cur > 0 ? "🔥 " + cur + "日連続" : "連続なし";
+
+      head.appendChild(name);
+      head.appendChild(streak);
+
+      var detail = document.createElement("div");
+      detail.className = "stat-detail";
+      detail.textContent =
+        "最長 " + bestStreak(set) + "日 ・ 達成率 " + (rate === null ? "—" : rate + "%") + " ・ 累計 " + total + "回";
+
+      var strip = document.createElement("div");
+      strip.className = "stat-strip";
+      var doneCount = 0;
+      for (var i = STRIP_DAYS - 1; i >= 0; i--) {
+        var d = addDays(today, -i);
+        var ds = toDateStr(d);
+        var cell = document.createElement("span");
+        cell.className = "stat-cell";
+        cell.title = d.getMonth() + 1 + "/" + d.getDate();
+        if (set[ds]) {
+          cell.classList.add("on");
+          doneCount++;
+        }
+        strip.appendChild(cell);
+      }
+      strip.setAttribute("role", "img");
+      strip.setAttribute("aria-label", "直近" + STRIP_DAYS + "日中 " + doneCount + "日記録");
+
+      var axis = document.createElement("div");
+      axis.className = "stat-axis";
+      var axisStart = document.createElement("span");
+      axisStart.textContent = STRIP_DAYS + "日前";
+      var axisEnd = document.createElement("span");
+      axisEnd.textContent = "今日";
+      axis.appendChild(axisStart);
+      axis.appendChild(axisEnd);
+
+      row.appendChild(head);
+      row.appendChild(detail);
+      row.appendChild(strip);
+      row.appendChild(axis);
+      els.statRoutines.appendChild(row);
+    });
+  }
+
+  function addTile(label, value, sub) {
+    var tile = document.createElement("div");
+    tile.className = "stat-tile";
+
+    var l = document.createElement("div");
+    l.className = "stat-tile-label";
+    l.textContent = label;
+
+    var v = document.createElement("div");
+    v.className = "stat-tile-value";
+    v.textContent = value;
+
+    var s = document.createElement("div");
+    s.className = "stat-tile-sub";
+    s.textContent = sub;
+
+    tile.appendChild(l);
+    tile.appendChild(v);
+    tile.appendChild(s);
+    els.statTiles.appendChild(tile);
   }
 
   function renderTimeline() {
@@ -359,8 +545,7 @@
     var log = { id: newId(), routineId: routineId, timestamp: new Date().toISOString(), note: "" };
     state.logs.push(log);
     saveState();
-    renderTodaySummary();
-    renderTimeline();
+    renderAll();
     showToast(routine.name + " を記録しました", function () {
       undoLog(log.id);
     });
@@ -371,8 +556,7 @@
       return l.id !== logId;
     });
     saveState();
-    renderTodaySummary();
-    renderTimeline();
+    renderAll();
   }
 
   function deleteLog(logId) {
@@ -384,13 +568,11 @@
       return l.id !== logId;
     });
     saveState();
-    renderTodaySummary();
-    renderTimeline();
+    renderAll();
     showToast("記録を削除しました", function () {
       state.logs.push(removed);
       saveState();
-      renderTodaySummary();
-      renderTimeline();
+      renderAll();
     });
   }
 
@@ -446,8 +628,7 @@
     saveState();
     els.logDetailDialog.close();
     pendingDetailRoutineId = null;
-    renderTodaySummary();
-    renderTimeline();
+    renderAll();
     showToast(routine.name + " を記録しました", function () {
       undoLog(log.id);
     });
