@@ -28,11 +28,31 @@
 
   <section class="timeline-section">
     <div class="timeline-header">
-      <h2>タイムライン</h2>
+      <div class="view-tabs" role="group" aria-label="表示切り替え">
+        <button type="button" id="tabTimeline" class="view-tab" aria-selected="true">タイムライン</button>
+        <button type="button" id="tabCalendar" class="view-tab" aria-selected="false">カレンダー</button>
+      </div>
       <button id="manageRoutinesBtn" class="btn-text">ルーティン管理</button>
     </div>
-    <div id="timeline" class="timeline"></div>
-    <p id="emptyTimelineHint" class="hint" hidden>まだ記録がありません。上のボタンをタップして記録しましょう。</p>
+
+    <div id="timelineView">
+      <div id="timeline" class="timeline"></div>
+      <p id="emptyTimelineHint" class="hint" hidden>まだ記録がありません。上のボタンをタップして記録しましょう。</p>
+    </div>
+
+    <div id="calendarView" class="calendar-view" hidden>
+      <div class="cal-controls">
+        <button type="button" id="calPrev" class="cal-nav" aria-label="前の月">‹</button>
+        <span id="calTitle" class="cal-title"></span>
+        <button type="button" id="calNext" class="cal-nav" aria-label="次の月">›</button>
+        <button type="button" id="calToday" class="btn-text">今月</button>
+      </div>
+      <select id="calFilter" class="cal-filter" aria-label="表示するルーティン"></select>
+      <p id="calSummary" class="cal-summary"></p>
+      <div id="calGrid" class="cal-grid"></div>
+      <div id="calLegend" class="cal-legend"></div>
+      <div id="calDayDetail" class="cal-day-detail"></div>
+    </div>
   </section>
 
   <dialog id="addRoutineDialog">
@@ -47,6 +67,17 @@
           <option value="workout">運動</option>
           <option value="study">勉強</option>
           <option value="other">その他</option>
+        </select>
+      </label>
+      <label>目標頻度
+        <select id="routineGoal">
+          <option value="7">毎日</option>
+          <option value="6">週6回</option>
+          <option value="5">週5回</option>
+          <option value="4">週4回</option>
+          <option value="3">週3回</option>
+          <option value="2">週2回</option>
+          <option value="1">週1回</option>
         </select>
       </label>
       <label>アイコン（絵文字・任意）

@@ -264,6 +264,198 @@ body {
   font-size: 11px;
   color: var(--text-secondary);
   margin: 2px 0 8px;
+  white-space: pre-line;
+}
+
+.routine-card .progress {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--gridline);
+  border-radius: 8px;
+}
+
+.view-tab {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.timeline-header .btn-text {
+  white-space: nowrap;
+}
+
+.view-tab[aria-selected="true"] {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.cal-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.cal-title {
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 6.5em;
+  text-align: center;
+}
+
+.cal-nav {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cal-controls .btn-text {
+  margin-left: auto;
+}
+
+.cal-filter {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.cal-summary {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 8px 0;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 7), 1fr);
+  gap: 3px;
+}
+
+.cal-head {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2px 0;
+}
+
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 48px;
+  padding: 4px 2px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-cell.out {
+  opacity: 0.45;
+}
+
+.cal-cell.today {
+  border-color: var(--text-primary);
+}
+
+.cal-cell.selected {
+  box-shadow: inset 0 0 0 2px var(--series-1);
+}
+
+.cal-day {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-cell.future .cal-day {
+  color: var(--text-muted);
+}
+
+.cal-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  width: 18px;
+}
+
+.cal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot-color, var(--series-1));
+  flex-shrink: 0;
+}
+
+.cal-week {
+  align-self: center;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-week.met {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 10px 0 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cal-day-detail {
+  margin-top: 12px;
+}
+
+.goal-select {
+  display: block;
+  margin-top: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page-plane);
+  color: var(--text-primary);
+  font-family: inherit;
 }
 
 .stat-strip {

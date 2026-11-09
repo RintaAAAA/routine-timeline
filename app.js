@@ -13,7 +13,19 @@
   var STRIP_DAYS = 14; // 統計の記録ストリップに表示する日数
   var RATE_DAYS = 30; // 達成率の集計上限日数
 
+  var VIEW_KEY = "routine-timeline-view";
+  var WEEKDAYS_JA = ["日", "月", "火", "水", "木", "金", "土"];
+  var WEEK_HEAD = ["月", "火", "水", "木", "金", "土", "日"]; // 週は月曜始まり
+
   var state = loadState();
+
+  var now = new Date();
+  var calState = {
+    year: now.getFullYear(),
+    month: now.getMonth(),
+    filter: "all",
+    selected: null, // init() で今日にする
+  };
 
   var els = {
     quickLogGrid: document.getElementById("quickLogGrid"),
@@ -25,12 +37,27 @@
     timeline: document.getElementById("timeline"),
     emptyTimelineHint: document.getElementById("emptyTimelineHint"),
 
+    tabTimeline: document.getElementById("tabTimeline"),
+    tabCalendar: document.getElementById("tabCalendar"),
+    timelineView: document.getElementById("timelineView"),
+    calendarView: document.getElementById("calendarView"),
+    calPrev: document.getElementById("calPrev"),
+    calNext: document.getElementById("calNext"),
+    calToday: document.getElementById("calToday"),
+    calTitle: document.getElementById("calTitle"),
+    calFilter: document.getElementById("calFilter"),
+    calSummary: document.getElementById("calSummary"),
+    calGrid: document.getElementById("calGrid"),
+    calLegend: document.getElementById("calLegend"),
+    calDayDetail: document.getElementById("calDayDetail"),
+
     openAddRoutine: document.getElementById("openAddRoutine"),
     addRoutineDialog: document.getElementById("addRoutineDialog"),
     addRoutineForm: document.getElementById("addRoutineForm"),
     routineName: document.getElementById("routineName"),
     routineCategory: document.getElementById("routineCategory"),
     routineIcon: document.getElementById("routineIcon"),
+    routineGoal: document.getElementById("routineGoal"),
     cancelAddRoutine: document.getElementById("cancelAddRoutine"),
 
     logDetailDialog: document.getElementById("logDetailDialog"),
@@ -79,7 +106,66 @@
       els.manageRoutinesDialog.close();
     });
 
+    els.tabTimeline.addEventListener("click", function () {
+      setView("timeline");
+    });
+    els.tabCalendar.addEventListener("click", function () {
+      setView("calendar");
+    });
+    els.calPrev.addEventListener("click", function () {
+      shiftMonth(-1);
+    });
+    els.calNext.addEventListener("click", function () {
+      shiftMonth(1);
+    });
+    els.calToday.addEventListener("click", function () {
+      var t = new Date();
+      calState.year = t.getFullYear();
+      calState.month = t.getMonth();
+      calState.selected = toDateStr(t);
+      renderCalendar();
+    });
+    els.calFilter.addEventListener("change", function () {
+      calState.filter = els.calFilter.value;
+      renderCalendar();
+    });
+
+    calState.selected = toDateStr(new Date());
+    setView(loadView());
     renderAll();
+  }
+
+  // ---------- view switching ----------
+
+  function loadView() {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "timeline";
+    } catch (e) {
+      return "timeline";
+    }
+  }
+
+  function setView(view) {
+    var isCal = view === "calendar";
+    els.timelineView.hidden = isCal;
+    els.calendarView.hidden = !isCal;
+    els.tabTimeline.setAttribute("aria-selected", String(!isCal));
+    els.tabCalendar.setAttribute("aria-selected", String(isCal));
+    try {
+      localStorage.setItem(VIEW_KEY, view);
+    } catch (e) {
+      /* 保存できなくても表示は切り替える */
+    }
+  }
+
+  function shiftMonth(delta) {
+    var d = new Date(calState.year, calState.month + delta, 1);
+    calState.year = d.getFullYear();
+    calState.month = d.getMonth();
+    var t = new Date();
+    var isCurrent = d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth();
+    calState.selected = isCurrent ? toDateStr(t) : null;
+    renderCalendar();
   }
 
   // ---------- state ----------
@@ -121,6 +207,7 @@
     renderTodaySummary();
     renderStats();
     renderTimeline();
+    renderCalendar();
   }
 
   function renderQuickLogGrid() {
@@ -152,14 +239,18 @@
       category.className = "category";
       category.textContent = meta.label;
 
-      var streak = currentStreak(logDateSet(routine.id));
-      if (streak > 0) {
-        category.textContent = meta.label + " ・ 🔥" + streak + "日";
-      }
-
       info.appendChild(name);
       info.appendChild(document.createElement("br"));
       info.appendChild(category);
+
+      var progressText = routineProgressText(routine);
+      if (progressText) {
+        var progress = document.createElement("span");
+        progress.className = "progress";
+        progress.textContent = progressText;
+        info.appendChild(document.createElement("br"));
+        info.appendChild(progress);
+      }
 
       var detailBtn = document.createElement("span");
       detailBtn.className = "detail-btn";
@@ -188,16 +279,25 @@
       els.todaySummary.hidden = true;
       return;
     }
-    var todayStr = toDateStr(new Date());
-    var doneIds = new Set();
-    state.logs.forEach(function (log) {
-      if (toDateStr(new Date(log.timestamp)) === todayStr) {
-        doneIds.add(log.routineId);
-      }
+    // 「今日やること」= 毎日ルーティン + 今週の目標にまだ届いていない週目標ルーティン。
+    // 週の目標を朝の時点で達成済みのものは休んでOKなので数えない。
+    var today = new Date();
+    var todayStr = toDateStr(today);
+    var total = 0;
+    var done = 0;
+    state.routines.forEach(function (routine) {
+      var set = logDateSet(routine.id);
+      var goal = goalOf(routine);
+      var needed = goal >= 7 || daysInWeek(set, today, todayStr) < goal;
+      if (!needed) return;
+      total++;
+      if (set[todayStr]) done++;
     });
     els.todaySummary.hidden = false;
     els.todaySummary.textContent =
-      "今日: " + doneIds.size + " / " + state.routines.length + " 種類のルーティンを記録済み";
+      total === 0
+        ? "今週の目標はすべて達成済みです 🎉 今日は休んでもOK"
+        : "今日: " + done + " / " + total + " 件のルーティンを記録済み";
   }
 
   // ---------- stats ----------
@@ -249,6 +349,116 @@
     return best;
   }
 
+  // ---- 週目標（週N回）----
+
+  // 1〜7。未設定（旧データ）や7は「毎日」
+  function goalOf(routine) {
+    var g = Number(routine.weeklyGoal);
+    return g >= 1 && g <= 7 ? Math.floor(g) : 7;
+  }
+
+  function goalLabel(goal) {
+    return goal >= 7 ? "毎日" : "週" + goal + "回";
+  }
+
+  // 週は月曜始まり
+  function weekStart(date) {
+    var d = addDays(date, 0);
+    return addDays(d, -((d.getDay() + 6) % 7));
+  }
+
+  // その週（refDate を含む週）に記録した日数。excludeDateStr の日は数えない
+  function daysInWeek(set, refDate, excludeDateStr) {
+    var start = weekStart(refDate);
+    var n = 0;
+    for (var i = 0; i < 7; i++) {
+      var ds = toDateStr(addDays(start, i));
+      if (set[ds] && ds !== excludeDateStr) n++;
+    }
+    return n;
+  }
+
+  // 週の先頭日(YYYY-MM-DD) -> その週に記録した日数
+  function weekCounts(set) {
+    var counts = {};
+    Object.keys(set).forEach(function (k) {
+      var ws = toDateStr(weekStart(parseDateStr(k)));
+      counts[ws] = (counts[ws] || 0) + 1;
+    });
+    return counts;
+  }
+
+  // 今週がまだ目標に届いていなくても、先週まで続いていれば連続は途切れていない扱い
+  function currentWeekStreak(set, goal) {
+    var counts = weekCounts(set);
+    var w = weekStart(new Date());
+    if ((counts[toDateStr(w)] || 0) < goal) w = addDays(w, -7);
+    var n = 0;
+    while ((counts[toDateStr(w)] || 0) >= goal) {
+      n++;
+      w = addDays(w, -7);
+    }
+    return n;
+  }
+
+  function bestWeekStreak(set, goal) {
+    var counts = weekCounts(set);
+    var keys = Object.keys(counts)
+      .filter(function (k) {
+        return counts[k] >= goal;
+      })
+      .sort();
+    var best = 0;
+    var run = 0;
+    var prev = null;
+    keys.forEach(function (k) {
+      if (prev && toDateStr(addDays(prev, 7)) === k) run++;
+      else run = 1;
+      if (run > best) best = run;
+      prev = parseDateStr(k);
+    });
+    return best;
+  }
+
+  // 終わった週（今週は除く、最大12週）のうち目標を達成した週の割合。対象週が無ければ null
+  function weeklyRate(set, goal) {
+    var keys = Object.keys(weekCounts(set)).sort();
+    if (keys.length === 0) return null;
+    var counts = weekCounts(set);
+    var thisWeek = weekStart(new Date());
+    var weeks = Math.round((thisWeek - parseDateStr(keys[0])) / (7 * 86400000));
+    weeks = Math.min(weeks, 12);
+    if (weeks <= 0) return null;
+    var met = 0;
+    for (var i = 1; i <= weeks; i++) {
+      if ((counts[toDateStr(addDays(thisWeek, -7 * i))] || 0) >= goal) met++;
+    }
+    return Math.round((met / weeks) * 100);
+  }
+
+  // 毎日目標は「連続日数」、週目標は「連続達成週数」
+  function routineStreak(routine, set) {
+    var goal = goalOf(routine);
+    if (goal >= 7) {
+      return { cur: currentStreak(set), best: bestStreak(set), unit: "日" };
+    }
+    return { cur: currentWeekStreak(set, goal), best: bestWeekStreak(set, goal), unit: "週" };
+  }
+
+  // クイック記録カードに出す1行（毎日: 🔥連続日数 / 週目標: 今週の進捗 + 連続週）
+  function routineProgressText(routine) {
+    var set = logDateSet(routine.id);
+    var goal = goalOf(routine);
+    var streak = routineStreak(routine, set);
+    var parts = [];
+    if (goal < 7) {
+      var n = daysInWeek(set, new Date(), null);
+      parts.push("今週 " + n + "/" + goal + "回" + (n >= goal ? " ✓" : ""));
+    }
+    if (streak.cur > 0) parts.push("🔥" + streak.cur + streak.unit);
+    return parts.join(" ・ ");
+  }
+
   // 記録開始日から今日まで（最大30日）のうち、記録した日の割合。記録が無ければ null
   function achievementRate(set) {
     var keys = Object.keys(set).sort();
@@ -291,7 +501,10 @@
       var total = state.logs.filter(function (l) {
         return l.routineId === routine.id;
       }).length;
-      var rate = achievementRate(set);
+      var goal = goalOf(routine);
+      var weekly = goal < 7;
+      var rate = weekly ? weeklyRate(set, goal) : achievementRate(set);
+      var streakInfo = routineStreak(routine, set);
 
       var row = document.createElement("div");
       row.className = "stat-row";
@@ -306,16 +519,22 @@
 
       var streak = document.createElement("span");
       streak.className = "stat-streak";
-      var cur = currentStreak(set);
-      streak.textContent = cur > 0 ? "🔥 " + cur + "日連続" : "連続なし";
+      streak.textContent =
+        streakInfo.cur > 0 ? "🔥 " + streakInfo.cur + streakInfo.unit + "連続" : "連続なし";
 
       head.appendChild(name);
       head.appendChild(streak);
 
       var detail = document.createElement("div");
       detail.className = "stat-detail";
-      detail.textContent =
-        "最長 " + bestStreak(set) + "日 ・ 達成率 " + (rate === null ? "—" : rate + "%") + " ・ 累計 " + total + "回";
+      var rateText = (weekly ? "週達成率 " : "達成率 ") + (rate === null ? "—" : rate + "%");
+      var detailParts = [];
+      if (weekly) {
+        var weekDone = daysInWeek(set, new Date(), null);
+        detailParts.push("目標 " + goalLabel(goal) + " ・ 今週 " + weekDone + "/" + goal + "回");
+      }
+      detailParts.push("最長 " + streakInfo.best + streakInfo.unit + " ・ " + rateText + " ・ 累計 " + total + "回");
+      detail.textContent = detailParts.join("\n");
 
       var strip = document.createElement("div");
       strip.className = "stat-strip";
@@ -467,6 +686,184 @@
     return entry;
   }
 
+  // ---------- calendar ----------
+
+  function renderCalendar() {
+    renderCalFilterOptions();
+
+    var y = calState.year;
+    var m = calState.month;
+    var filterRoutine = calState.filter === "all" ? null : getRoutine(calState.filter);
+    els.calTitle.textContent = y + "年" + (m + 1) + "月";
+
+    // 日付 -> { cats: 記録のあったカテゴリ, count: 記録数 }
+    var dayMap = {};
+    state.logs.forEach(function (log) {
+      if (filterRoutine && log.routineId !== filterRoutine.id) return;
+      var routine = getRoutine(log.routineId);
+      var cat = (routine && routine.category) || "other";
+      var ds = toDateStr(new Date(log.timestamp));
+      var entry = dayMap[ds] || (dayMap[ds] = { cats: {}, count: 0 });
+      entry.cats[cat] = true;
+      entry.count++;
+    });
+
+    var showWeek = !!filterRoutine;
+    var routineSet = filterRoutine ? logDateSet(filterRoutine.id) : null;
+    var goal = filterRoutine ? goalOf(filterRoutine) : 0;
+    var todayStr = toDateStr(new Date());
+
+    els.calGrid.innerHTML = "";
+    els.calGrid.style.setProperty("--cols", showWeek ? 8 : 7);
+    WEEK_HEAD.forEach(function (w) {
+      els.calGrid.appendChild(makeEl("div", "cal-head", w));
+    });
+    if (showWeek) els.calGrid.appendChild(makeEl("div", "cal-head", "週"));
+
+    var lastDay = new Date(y, m + 1, 0);
+    var cursor = weekStart(new Date(y, m, 1));
+    while (cursor <= lastDay) {
+      for (var i = 0; i < 7; i++) {
+        els.calGrid.appendChild(buildCalCell(addDays(cursor, i), m, todayStr, dayMap));
+      }
+      if (showWeek) {
+        var weekCell = makeEl("div", "cal-week");
+        if (toDateStr(cursor) <= todayStr) {
+          var n = daysInWeek(routineSet, cursor, null);
+          var met = n >= goal;
+          weekCell.textContent = (met ? "✓" : "") + n + "/" + goal;
+          if (met) weekCell.classList.add("met");
+          weekCell.setAttribute("aria-label", "この週 " + n + "回、目標 " + goal + "回" + (met ? "達成" : ""));
+        }
+        els.calGrid.appendChild(weekCell);
+      }
+      cursor = addDays(cursor, 7);
+    }
+
+    // 月のまとめ
+    var activeDays = 0;
+    var logCount = 0;
+    for (var d = 1; d <= lastDay.getDate(); d++) {
+      var e = dayMap[toDateStr(new Date(y, m, d))];
+      if (e) {
+        activeDays++;
+        logCount += e.count;
+      }
+    }
+    var scope = filterRoutine ? filterRoutine.name + "（" + goalLabel(goal) + "目標）" : "すべて";
+    els.calSummary.textContent =
+      (m + 1) + "月 " + scope + ": " + activeDays + "日記録 ・ 計" + logCount + "回";
+
+    renderCalLegend(showWeek);
+    renderCalDayDetail(filterRoutine);
+  }
+
+  function renderCalFilterOptions() {
+    var sel = els.calFilter;
+    var current = calState.filter;
+    if (current !== "all" && !getRoutine(current)) current = "all";
+    calState.filter = current;
+
+    sel.innerHTML = "";
+    var all = document.createElement("option");
+    all.value = "all";
+    all.textContent = "すべてのルーティン";
+    sel.appendChild(all);
+    state.routines.forEach(function (routine) {
+      var meta = CATEGORY_META[routine.category] || CATEGORY_META.other;
+      var opt = document.createElement("option");
+      opt.value = routine.id;
+      opt.textContent = (routine.icon || meta.defaultIcon) + " " + routine.name;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  }
+
+  function buildCalCell(date, month, todayStr, dayMap) {
+    var ds = toDateStr(date);
+    var entry = dayMap[ds];
+
+    var cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "cal-cell";
+    if (date.getMonth() !== month) cell.classList.add("out");
+    if (ds === todayStr) cell.classList.add("today");
+    if (ds > todayStr) cell.classList.add("future");
+    if (ds === calState.selected) cell.classList.add("selected");
+    cell.setAttribute(
+      "aria-label",
+      date.getMonth() + 1 + "月" + date.getDate() + "日 " + (entry ? entry.count + "件の記録" : "記録なし")
+    );
+    cell.setAttribute("aria-pressed", String(ds === calState.selected));
+
+    cell.appendChild(makeEl("span", "cal-day", String(date.getDate())));
+
+    var dots = makeEl("span", "cal-dots");
+    if (entry) {
+      Object.keys(CATEGORY_META).forEach(function (cat) {
+        if (!entry.cats[cat]) return;
+        var dot = makeEl("span", "cal-dot");
+        dot.style.setProperty("--dot-color", "var(" + CATEGORY_META[cat].colorVar + ")");
+        dots.appendChild(dot);
+      });
+    }
+    cell.appendChild(dots);
+
+    cell.addEventListener("click", function () {
+      calState.selected = ds;
+      renderCalendar();
+    });
+    return cell;
+  }
+
+  function renderCalLegend(showWeek) {
+    els.calLegend.innerHTML = "";
+    if (showWeek) {
+      els.calLegend.appendChild(makeEl("span", "cal-legend-note", "右端の列は、その週の記録回数 / 週の目標です"));
+      return;
+    }
+    Object.keys(CATEGORY_META).forEach(function (cat) {
+      var item = makeEl("span", "cal-legend-item");
+      var dot = makeEl("span", "cal-dot");
+      dot.style.setProperty("--dot-color", "var(" + CATEGORY_META[cat].colorVar + ")");
+      item.appendChild(dot);
+      item.appendChild(makeEl("span", "", CATEGORY_META[cat].label));
+      els.calLegend.appendChild(item);
+    });
+  }
+
+  function renderCalDayDetail(filterRoutine) {
+    els.calDayDetail.innerHTML = "";
+    var sel = calState.selected;
+    if (!sel) return;
+
+    els.calDayDetail.appendChild(makeEl("p", "timeline-date-label", formatDateJa(sel)));
+
+    var logs = state.logs
+      .filter(function (log) {
+        if (filterRoutine && log.routineId !== filterRoutine.id) return false;
+        return toDateStr(new Date(log.timestamp)) === sel;
+      })
+      .sort(function (a, b) {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+
+    if (logs.length === 0) {
+      els.calDayDetail.appendChild(makeEl("p", "hint", "この日の記録はありません"));
+      return;
+    }
+    logs.forEach(function (log) {
+      els.calDayDetail.appendChild(renderTimelineEntry(log));
+    });
+  }
+
+  function makeEl(tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+
   function renderManageList() {
     els.manageRoutinesList.innerHTML = "";
     if (state.routines.length === 0) {
@@ -501,8 +898,25 @@
       metaLine.className = "meta";
       metaLine.textContent = meta.label + " ・ 記録 " + count + " 件";
 
+      var goalSelect = document.createElement("select");
+      goalSelect.className = "goal-select";
+      goalSelect.setAttribute("aria-label", routine.name + "の目標頻度");
+      for (var g = 7; g >= 1; g--) {
+        var opt = document.createElement("option");
+        opt.value = String(g);
+        opt.textContent = goalLabel(g);
+        goalSelect.appendChild(opt);
+      }
+      goalSelect.value = String(goalOf(routine));
+      goalSelect.addEventListener("change", function () {
+        routine.weeklyGoal = Number(goalSelect.value);
+        saveState();
+        renderAll();
+      });
+
       info.appendChild(name);
       info.appendChild(metaLine);
+      info.appendChild(goalSelect);
 
       var deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
@@ -531,6 +945,7 @@
       name: name,
       category: els.routineCategory.value,
       icon: els.routineIcon.value.trim(),
+      weeklyGoal: Number(els.routineGoal.value) || 7,
     };
     state.routines.push(routine);
     saveState();
@@ -678,9 +1093,11 @@
     if (dateStr === todayStr) return "今日";
     if (dateStr === yesterdayStr) return "昨日";
 
-    var parts = dateStr.split("-").map(Number);
-    var d = new Date(parts[0], parts[1] - 1, parts[2]);
-    var weekday = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-    return d.getMonth() + 1 + "月" + d.getDate() + "日(" + weekday + ")";
+    return formatDateJa(dateStr);
+  }
+
+  function formatDateJa(dateStr) {
+    var d = parseDateStr(dateStr);
+    return d.getMonth() + 1 + "月" + d.getDate() + "日(" + WEEKDAYS_JA[d.getDay()] + ")";
   }
 })();
